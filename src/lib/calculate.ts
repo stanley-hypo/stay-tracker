@@ -120,6 +120,7 @@ export function getActiveWindows(trips: Trip[]): FutureWindow[] {
 
   const boundaries = new Set<string>();
   boundaries.add(todayStr);
+  boundaries.add(earliestStr);
   for (const trip of trips) {
     boundaries.add(trip.departDate);
     boundaries.add(trip.returnDate);
@@ -182,34 +183,39 @@ export function getPlanningTimeline(trips: Trip[]): PlanningMonth[] {
 
   for (let m = 0; m <= 12; m++) {
     const monthStart = startOfMonth(addMonths(today, m));
-    const repDate = addDays(monthStart, 14); // 15th as representative
-    if (repDate < today && m > 0) continue;
+    if (monthStart < today && m > 0) continue;
 
-    const dateStr = format(repDate, "yyyy-MM-dd");
-    const earliestStr = format(addDays(repDate, -364), "yyyy-MM-dd");
+    // Check ALL windows that overlap ANY day in this month.
+    // Window [ws, ws+364] overlaps [monthStart, monthEnd] iff
+    //   ws <= monthEnd AND ws+364 >= monthStart
+    // i.e. ws ∈ [monthStart - 364, monthEnd]
+    const monthEnd = addDays(startOfMonth(addMonths(today, m + 1)), -1);
+    const scanStart = format(addDays(monthStart, -364), "yyyy-MM-dd");
+    const scanEnd = format(monthEnd, "yyyy-MM-dd");
+    const monthStartStr = format(monthStart, "yyyy-MM-dd");
 
-    // Collect all possible window starts in [date-364, date]
     const starts = new Set<string>();
-    starts.add(earliestStr);
-    starts.add(dateStr);
+    starts.add(scanStart);
+    starts.add(scanEnd);
 
     for (const trip of trips) {
-      if (trip.departDate >= earliestStr && trip.departDate <= dateStr) starts.add(trip.departDate);
-      if (trip.returnDate >= earliestStr && trip.returnDate <= dateStr) starts.add(trip.returnDate);
+      if (trip.departDate >= scanStart && trip.departDate <= scanEnd) starts.add(trip.departDate);
+      if (trip.returnDate >= scanStart && trip.returnDate <= scanEnd) starts.add(trip.returnDate);
       const r1 = format(addDays(parseISO(trip.returnDate), 1), "yyyy-MM-dd");
-      if (r1 >= earliestStr && r1 <= dateStr) starts.add(r1);
+      if (r1 >= scanStart && r1 <= scanEnd) starts.add(r1);
     }
 
     let maxCommitted = 0;
     for (const startStr of starts) {
       const ws = parseISO(startStr);
       const we = addDays(ws, 364);
+      if (we < monthStart || ws > monthEnd) continue;
       maxCommitted = Math.max(maxCommitted, countAbroadInWindow(trips, ws, we));
     }
 
     points.push({
-      date: dateStr,
-      label: format(repDate, "yyyy年M月"),
+      date: monthStartStr,
+      label: format(monthStart, "yyyy年M月"),
       committedDays: maxCommitted,
       remainingBudget: Math.max(0, 180 - maxCommitted),
       passed: maxCommitted <= 180,
