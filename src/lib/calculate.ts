@@ -135,13 +135,14 @@ export function getActiveWindows(trips: Trip[]): FutureWindow[] {
     const ws = parseISO(startStr);
     const we = addDays(ws, 364);
     const daysAbroad = countAbroadInWindow(trips, ws, we);
+    const daysLocal = 365 - daysAbroad;
     windows.push({
       windowStart: startStr,
       windowEnd: format(we, "yyyy-MM-dd"),
       daysAbroad,
-      daysLocal: 365 - daysAbroad,
+      daysLocal,
       remainingAbroad: Math.max(0, 185 - daysAbroad),
-      passed: daysLocal <= 185,
+      passed: daysLocal >= 180,
     });
   }
 
