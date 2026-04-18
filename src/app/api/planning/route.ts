@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
     const retDate = format(addDays(dep, m.days), "yyyy-MM-dd");
     const allT = [...userTrips.map(t => ({ departDate: t.departDate, returnDate: t.returnDate })), { departDate, returnDate: retDate }];
     const { maxAbroad } = maxAbroadInAllWindows(allT);
-    return { label: m.label, returnDate, daysAbroad: maxAbroad, remaining: 185 - maxAbroad, safe: maxAbroad <= 185 };
+    return { label: m.label, returnDate: retDate, daysAbroad: maxAbroad, remaining: 185 - maxAbroad, safe: maxAbroad <= 185 };
   });
 
   return NextResponse.json({
