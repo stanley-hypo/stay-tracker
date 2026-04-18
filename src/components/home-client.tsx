@@ -274,67 +274,77 @@ export function HomeClient({
             </button>
           </form>
 
-          {/* Future Planning */}
+          {/* Active Windows — Planning */}
           {futureWindows.length > 0 && (() => {
-            const currentWin = futureWindows[0];
-            const bestWin = futureWindows.reduce((best, w) =>
+            // futureWindows is sorted by daysAbroad desc (most constrained first)
+            const tightestWin = futureWindows[0];
+            const relaxedWin = futureWindows.reduce((best, w) =>
               w.remainingAbroad > best.remainingAbroad ? w : best, futureWindows[0]);
-            const isSameBest = currentWin.windowStart === bestWin.windowStart;
+            const isSame = tightestWin.windowStart === relaxedWin.windowStart;
 
             return (
               <div className="space-y-4 mb-6">
-                <h2 className="text-lg font-semibold">🔮 未來規劃</h2>
+                <h2 className="text-lg font-semibold">🔮 離港預算（進行中嘅 365 日窗口）</h2>
 
-                {/* Current Window Summary */}
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-sm border border-blue-200 p-5">
+                {/* Tightest Window */}
+                <div className={`rounded-xl shadow-sm border p-5 ${
+                  tightestWin.passed
+                    ? "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200"
+                    : "bg-gradient-to-r from-red-50 to-orange-50 border-red-200"
+                }`}>
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-blue-700">
-                      📌 由 {currentWin.windowStart} 起 365 日
+                    <h3 className={`font-semibold ${tightestWin.passed ? "text-blue-700" : "text-red-700"}`}>
+                      🔴 最緊窗口
                     </h3>
-                    <StatusBadge passed={currentWin.passed} />
+                    <StatusBadge passed={tightestWin.passed} />
                   </div>
-                  <ProgressBar daysLocal={currentWin.daysLocal} />
-                  <div className="flex justify-between text-sm mt-2">
-                    <span className="text-gray-600">🏠 在港 {currentWin.daysLocal} 日</span>
-                    <span className="text-gray-600">✈️ 已安排離港 {currentWin.daysAbroad} 日</span>
-                    <span className={`font-semibold ${currentWin.remainingAbroad > 30 ? "text-blue-600" : "text-red-600"}`}>
-                      🎒 尚可離港 {currentWin.remainingAbroad} 日
+                  <ProgressBar daysLocal={tightestWin.daysLocal} />
+                  <div className="flex flex-wrap justify-between gap-2 text-sm mt-2">
+                    <span className="text-gray-600">🏠 在港 {tightestWin.daysLocal} 日</span>
+                    <span className="text-gray-600">✈️ 已離港 {tightestWin.daysAbroad} 日</span>
+                    <span className={`font-semibold ${tightestWin.remainingAbroad > 30 ? "text-blue-600" : tightestWin.remainingAbroad > 0 ? "text-amber-600" : "text-red-600"}`}>
+                      🎒 尚可離港 {tightestWin.remainingAbroad} 日
                     </span>
                   </div>
+                  <p className="text-xs text-gray-400 mt-2">
+                    {tightestWin.windowStart} → {tightestWin.windowEnd}
+                  </p>
                 </div>
 
-                {/* Best Window */}
-                {!isSameBest && (
+                {/* Most Relaxed Window */}
+                {!isSame && (
                   <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl shadow-sm border border-green-200 p-5">
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-semibold text-green-700">🏆 最寬鬆期間</h3>
+                      <h3 className="font-semibold text-green-700">🏆 最寬鬆窗口</h3>
                       <span className="text-sm text-green-600 font-semibold">
-                        尚可離港 {bestWin.remainingAbroad} 日
+                        尚可離港 {relaxedWin.remainingAbroad} 日
                       </span>
                     </div>
                     <p className="text-sm text-gray-600">
-                      {bestWin.windowStart} → {bestWin.windowEnd}
+                      {relaxedWin.windowStart} → {relaxedWin.windowEnd}
                     </p>
                     <p className="text-xs text-gray-400 mt-1">
-                      喺呢段期間出發可以享有最多離港日數
+                      呢個進行中嘅窗口有最多離港 budget
                     </p>
                   </div>
                 )}
 
-                {/* All Future Windows */}
+                {/* All Active Windows */}
                 {futureWindows.length > 1 && (
                   <details className="bg-white rounded-xl shadow-sm border">
                     <summary className="p-4 cursor-pointer font-medium text-sm text-gray-700 hover:bg-gray-50 rounded-xl">
-                      📋 查看所有未來窗口（{futureWindows.length} 個）
+                      📋 查看所有進行中窗口（{futureWindows.length} 個，由最緊到最鬆）
                     </summary>
                     <div className="px-4 pb-4 space-y-2">
                       {futureWindows.map((w, i) => (
                         <div
                           key={i}
                           className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
-                            w.windowStart === bestWin.windowStart
-                              ? "bg-green-50 border border-green-200"
-                              : "bg-gray-50"
+                            i === 0
+                              ? "bg-red-50 border border-red-200"
+                              : w.windowStart === relaxedWin.windowStart
+                                ? "bg-green-50 border border-green-200"
+                                : "bg-gray-50"
                           }`}
                         >
                           <span className="text-gray-700">
