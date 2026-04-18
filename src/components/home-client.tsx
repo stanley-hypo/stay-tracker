@@ -36,6 +36,18 @@ interface PlanningMonth {
   passed: boolean;
 }
 
+interface PlanningResult {
+  departDate: string;
+  latestSafeReturn: string;
+  tripDays: number;
+  abroadNights: number;
+  committedDays: number;
+  worstWindow: string;
+  worstWindowAbroad: number;
+  headroom: number;
+  milestones: { label: string; returnDate: string; daysAbroad: number; remaining: number; safe: boolean }[];
+}
+
 interface Props {
   allUsers: User[];
   selectedUserId: string;
@@ -65,6 +77,13 @@ export function HomeClient({
     onConfirm: () => void;
   }>({ open: false, title: "", message: "", danger: false, onConfirm: () => {} });
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
+  const [editForm, setEditForm] = useState({ destination: "", departDate: "", returnDate: "" });
+
+  // --- Planner state ---
+  const [plannerDepart, setPlannerDepart] = useState("");
+  const [planningResult, setPlanningResult] = useState<PlanningResult | null>(null);
+  const [planningLoading, setPlanningLoading] = useState(false);
 
   function showToast(message: string, type: "success" | "error") {
     setToast({ message, type });
@@ -142,7 +161,6 @@ export function HomeClient({
       if (!res.ok) { showToast(data.error || "新增失敗", "error"); return; }
       showToast("已新增出國記錄", "success");
       (e.target as HTMLFormElement).reset();
-      // Re-set hidden userId
       const hiddenInput = (e.target as HTMLFormElement).querySelector('input[name="userId"]') as HTMLInputElement;
       if (hiddenInput) hiddenInput.value = userId;
       router.refresh();
@@ -167,6 +185,55 @@ export function HomeClient({
     );
   }
 
+  // --- Edit trip ---
+  function openEditTrip(trip: Trip) {
+    setEditingTrip(trip);
+    setEditForm({ destination: trip.destination, departDate: trip.departDate, returnDate: trip.returnDate });
+  }
+
+  function handleEditTrip(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!editingTrip) return;
+    const dest = editForm.destination.trim();
+    if (!dest) { showToast("請輸入目的地", "error"); return; }
+    if (dest.length > 200) { showToast("目的地不能超過 200 個字", "error"); return; }
+    if (!editForm.departDate || !editForm.returnDate) { showToast("請選擇出發及回程日期", "error"); return; }
+    if (new Date(editForm.returnDate) < new Date(editForm.departDate)) { showToast("回程日期不能早於出發日期", "error"); return; }
+    const diff = (new Date(editForm.returnDate).getTime() - new Date(editForm.departDate).getTime()) / (1000 * 60 * 60 * 24);
+    if (diff + 1 > 365) { showToast("單次出國不能超過 365 日", "error"); return; }
+
+    startTransition(async () => {
+      const res = await fetch(`/api/trips/${editingTrip.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ destination: dest, departDate: editForm.departDate, returnDate: editForm.returnDate }),
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error || "更新失敗", "error"); return; }
+      showToast("已更新記錄", "success");
+      setEditingTrip(null);
+      router.refresh();
+    });
+  }
+
+  // --- Planner ---
+  function handlePlannerDateChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const date = e.target.value;
+    setPlannerDepart(date);
+    setPlanningResult(null);
+
+    if (!date || !selectedUserId) return;
+    setPlanningLoading(true);
+    fetch(`/api/planning?userId=${selectedUserId}&departDate=${date}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) { showToast(data.error, "error"); return; }
+        setPlanningResult(data);
+      })
+      .catch(() => showToast("計算失敗", "error"))
+      .finally(() => setPlanningLoading(false));
+  }
+
   const selectedUser = allUsers.find((u) => u.id === selectedUserId);
 
   return (
@@ -185,6 +252,60 @@ export function HomeClient({
         onCancel={() => setModal((m) => ({ ...m, open: false }))}
       />
       {toast && <Toast message={toast.message} type={toast.type} />}
+
+      {/* Edit Trip Modal */}
+      {editingTrip && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setEditingTrip(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl p-6 mx-4 max-w-md w-full">
+            <h3 className="text-lg font-bold mb-4">✏️ 編輯出國記錄</h3>
+            <form onSubmit={handleEditTrip} className="space-y-3">
+              <input
+                value={editForm.destination}
+                onChange={e => setEditForm(f => ({ ...f, destination: e.target.value }))}
+                placeholder="目的地"
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">出發日期</label>
+                  <input
+                    type="date"
+                    value={editForm.departDate}
+                    onChange={e => setEditForm(f => ({ ...f, departDate: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">回程日期</label>
+                  <input
+                    type="date"
+                    value={editForm.returnDate}
+                    onChange={e => setEditForm(f => ({ ...f, returnDate: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingTrip(null)}
+                  className="flex-1 px-4 py-2 rounded-lg border text-sm font-medium hover:bg-gray-50 transition cursor-pointer"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="flex-1 bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 transition cursor-pointer disabled:opacity-50"
+                >
+                  {isPending ? "儲存中..." : "儲存"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* User Management */}
       <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
@@ -246,6 +367,72 @@ export function HomeClient({
       {/* Selected User Content */}
       {selectedUser && (
         <>
+          {/* Interactive Planner */}
+          <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl shadow-sm border border-indigo-200 p-6 mb-6">
+            <h2 className="text-lg font-semibold mb-1">🗓️ 出發規劃器</h2>
+            <p className="text-sm text-gray-500 mb-4">選擇你想幾時出發，即時知道最長可以去幾耐</p>
+            <div className="flex items-center gap-3 mb-4">
+              <label className="text-sm font-medium text-gray-700 whitespace-nowrap">📅 出發日期：</label>
+              <input
+                type="date"
+                value={plannerDepart}
+                onChange={handlePlannerDateChange}
+                min={new Date().toISOString().split("T")[0]}
+                className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none flex-1 max-w-xs"
+              />
+              {planningLoading && <span className="text-sm text-indigo-500 animate-pulse">計算中...</span>}
+            </div>
+
+            {planningResult && (
+              <div className="space-y-3">
+                {/* Hero result */}
+                <div className={`rounded-xl p-5 ${planningResult.headroom === 0 ? "bg-amber-50 border-2 border-amber-300" : "bg-white border border-indigo-200"}`}>
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">如果你喺 {planningResult.departDate} 出發</p>
+                      <p className="text-2xl font-bold text-indigo-700">最遲 {planningResult.latestSafeReturn} 返港</p>
+                      <p className="text-sm text-gray-500 mt-1">
+                        共 {planningResult.tripDays} 日（{planningResult.abroadNights} 晚）— {planningResult.headroom === 0 ? "⚠️ 用盡所有預算" : `仲有 ${planningResult.headroom} 日 buffer`}
+                      </p>
+                    </div>
+                    <div className={`px-3 py-1 rounded-full text-sm font-semibold ${planningResult.headroom === 0 ? "bg-amber-100 text-amber-800" : "bg-indigo-100 text-indigo-800"}`}>
+                      {planningResult.headroom === 0 ? "⚠️ 零 buffer" : "✅ 安全"}
+                    </div>
+                  </div>
+
+                  {/* Milestone bar */}
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-gray-500 font-medium">常用行程長度：</p>
+                    {planningResult.milestones.map((m, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500 w-12">{m.label}</span>
+                        <span className="text-xs text-gray-400 w-24">{m.returnDate} 回</span>
+                        <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                          <div
+                            className={`h-full transition-all ${m.safe ? "bg-green-400" : "bg-red-400"}`}
+                            style={{ width: `${Math.min((m.daysAbroad / 185) * 100, 100)}%` }}
+                          />
+                        </div>
+                        <span className={`text-xs font-semibold w-20 text-right ${m.safe ? "text-green-600" : "text-red-600"}`}>
+                          {m.daysAbroad}/185 {m.safe ? "✅" : "❌"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Worst window info */}
+                  <p className="text-xs text-gray-400 mt-3">
+                    最緊窗口：{planningResult.worstWindow}（{planningResult.worstWindowAbroad}/185 日離港）
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {!planningResult && !planningLoading && (
+              <p className="text-sm text-gray-400 text-center py-4">選擇出發日期查看規劃</p>
+            )}
+          </div>
+
           {/* Add Trip Form */}
           <form onSubmit={handleAddTrip} className="bg-white rounded-xl shadow-sm border p-6 mb-6">
             <h2 className="text-lg font-semibold mb-4">
@@ -286,7 +473,7 @@ export function HomeClient({
 
           {/* Active Windows + Planning Timeline */}
           {activeWindows.length > 0 && (() => {
-            const tightest = activeWindows[0]; // sorted by daysAbroad desc
+            const tightest = activeWindows[0];
 
             return (
               <div className="space-y-4 mb-6">
@@ -454,13 +641,24 @@ export function HomeClient({
                         ({dayDiff(trip.returnDate, trip.departDate)}日)
                       </span>
                     </div>
-                    <button
-                      onClick={() => handleDeleteTrip(trip)}
-                      disabled={isPending}
-                      className="text-red-400 hover:text-red-600 text-sm cursor-pointer disabled:opacity-50"
-                    >
-                      🗑️
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openEditTrip(trip)}
+                        disabled={isPending}
+                        className="text-blue-400 hover:text-blue-600 text-sm cursor-pointer disabled:opacity-50"
+                        title="編輯"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTrip(trip)}
+                        disabled={isPending}
+                        className="text-red-400 hover:text-red-600 text-sm cursor-pointer disabled:opacity-50"
+                        title="刪除"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -501,6 +699,5 @@ function ProgressBar({ daysLocal }: { daysLocal: number }) {
 }
 
 function dayDiff(end: string, start: string): number {
-  // Count only intermediate days (exclude depart & return)
   return Math.round((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)) - 1;
 }
