@@ -105,3 +105,81 @@ export function getWorstPerYear(trips: Trip[]): { year: number; worst: RiskPerio
     .sort((a, b) => b[0] - a[0])
     .map(([year, worst]) => ({ year, worst }));
 }
+
+export interface FutureWindow {
+  /** Start of the 365-day window */
+  windowStart: string;
+  /** End of the 365-day window */
+  windowEnd: string;
+  /** Days abroad already committed in this window */
+  daysAbroad: number;
+  /** Days in local */
+  daysLocal: number;
+  /** How many more days can still be spent abroad (max 185 - daysAbroad) */
+  remainingAbroad: number;
+  /** Whether current status passes */
+  passed: boolean;
+}
+
+/**
+ * Get future 365-day windows starting from today,
+ * showing how many days abroad are still available for planning.
+ */
+export function getFutureWindows(trips: Trip[]): FutureWindow[] {
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+
+  if (trips.length === 0) {
+    return [{
+      windowStart: todayStr,
+      windowEnd: format(addDays(parseISO(todayStr), 364), "yyyy-MM-dd"),
+      daysAbroad: 0,
+      daysLocal: 365,
+      remainingAbroad: 185,
+      passed: true,
+    }];
+  }
+
+  // Collect boundary dates from today onwards + today itself
+  const boundaries = new Set<string>();
+  boundaries.add(todayStr);
+
+  for (const trip of trips) {
+    boundaries.add(trip.departDate);
+    boundaries.add(trip.returnDate);
+    boundaries.add(format(addDays(parseISO(trip.returnDate), 1), "yyyy-MM-dd"));
+  }
+
+  const sorted = Array.from(boundaries).filter(d => d >= todayStr).sort();
+  const windows: FutureWindow[] = [];
+
+  for (const startStr of sorted) {
+    const windowStart = parseISO(startStr);
+    const windowEnd = addDays(windowStart, 364);
+
+    let daysAbroad = 0;
+    for (const trip of trips) {
+      const dep = parseISO(trip.departDate);
+      const ret = parseISO(trip.returnDate);
+      const overlapStart = dep < windowStart ? windowStart : dep;
+      const overlapEnd = ret > windowEnd ? windowEnd : ret;
+      if (overlapStart <= overlapEnd) {
+        daysAbroad += differenceInDays(overlapEnd, overlapStart) + 1;
+      }
+    }
+
+    const daysLocal = 365 - daysAbroad;
+    windows.push({
+      windowStart: startStr,
+      windowEnd: format(windowEnd, "yyyy-MM-dd"),
+      daysAbroad,
+      daysLocal,
+      remainingAbroad: Math.max(0, 185 - daysAbroad),
+      passed: daysLocal >= 180,
+    });
+  }
+
+  // Sort chronologically
+  windows.sort((a, b) => a.windowStart.localeCompare(b.windowStart));
+
+  return windows;
+}

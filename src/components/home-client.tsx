@@ -19,12 +19,22 @@ interface Trip {
   returnDate: string;
 }
 
+interface FutureWindow {
+  windowStart: string;
+  windowEnd: string;
+  daysAbroad: number;
+  daysLocal: number;
+  remainingAbroad: number;
+  passed: boolean;
+}
+
 interface Props {
   allUsers: User[];
   selectedUserId: string;
   userTrips: Trip[];
   worstPerYear: { year: number; worst: RiskPeriod }[];
   topRisks: RiskPeriod[];
+  futureWindows: FutureWindow[];
 }
 
 export function HomeClient({
@@ -33,6 +43,7 @@ export function HomeClient({
   userTrips,
   worstPerYear,
   topRisks,
+  futureWindows,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -263,10 +274,91 @@ export function HomeClient({
             </button>
           </form>
 
-          {/* Worst Period Per Year */}
+          {/* Future Planning */}
+          {futureWindows.length > 0 && (() => {
+            const currentWin = futureWindows[0];
+            const bestWin = futureWindows.reduce((best, w) =>
+              w.remainingAbroad > best.remainingAbroad ? w : best, futureWindows[0]);
+            const isSameBest = currentWin.windowStart === bestWin.windowStart;
+
+            return (
+              <div className="space-y-4 mb-6">
+                <h2 className="text-lg font-semibold">🔮 未來規劃</h2>
+
+                {/* Current Window Summary */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-sm border border-blue-200 p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-blue-700">
+                      📌 由 {currentWin.windowStart} 起 365 日
+                    </h3>
+                    <StatusBadge passed={currentWin.passed} />
+                  </div>
+                  <ProgressBar daysLocal={currentWin.daysLocal} />
+                  <div className="flex justify-between text-sm mt-2">
+                    <span className="text-gray-600">🏠 在港 {currentWin.daysLocal} 日</span>
+                    <span className="text-gray-600">✈️ 已安排離港 {currentWin.daysAbroad} 日</span>
+                    <span className={`font-semibold ${currentWin.remainingAbroad > 30 ? "text-blue-600" : "text-red-600"}`}>
+                      🎒 尚可離港 {currentWin.remainingAbroad} 日
+                    </span>
+                  </div>
+                </div>
+
+                {/* Best Window */}
+                {!isSameBest && (
+                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl shadow-sm border border-green-200 p-5">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-green-700">🏆 最寬鬆期間</h3>
+                      <span className="text-sm text-green-600 font-semibold">
+                        尚可離港 {bestWin.remainingAbroad} 日
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      {bestWin.windowStart} → {bestWin.windowEnd}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      喺呢段期間出發可以享有最多離港日數
+                    </p>
+                  </div>
+                )}
+
+                {/* All Future Windows */}
+                {futureWindows.length > 1 && (
+                  <details className="bg-white rounded-xl shadow-sm border">
+                    <summary className="p-4 cursor-pointer font-medium text-sm text-gray-700 hover:bg-gray-50 rounded-xl">
+                      📋 查看所有未來窗口（{futureWindows.length} 個）
+                    </summary>
+                    <div className="px-4 pb-4 space-y-2">
+                      {futureWindows.map((w, i) => (
+                        <div
+                          key={i}
+                          className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${
+                            w.windowStart === bestWin.windowStart
+                              ? "bg-green-50 border border-green-200"
+                              : "bg-gray-50"
+                          }`}
+                        >
+                          <span className="text-gray-700">
+                            {w.windowStart} → {w.windowEnd}
+                          </span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-gray-500">✈️ 已用 {w.daysAbroad}日</span>
+                            <span className={`font-semibold ${w.remainingAbroad > 30 ? "text-blue-600" : w.remainingAbroad > 0 ? "text-amber-600" : "text-red-600"}`}>
+                              🎒 可用 {w.remainingAbroad}日
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Failing Years Only */}
           {worstPerYear.length > 0 && (
             <div className="space-y-4 mb-6">
-              <h2 className="text-lg font-semibold">📊 按年最高風險期間（任何 365 日）</h2>
+              <h2 className="text-lg font-semibold">⚠️ 不合格年份（任何 365 日）</h2>
               {worstPerYear.map(({ year, worst }) => (
                 <div key={year} className="bg-white rounded-xl shadow-sm border p-5">
                   <div className="flex items-center justify-between mb-2">
@@ -289,7 +381,7 @@ export function HomeClient({
           {/* Top 5 Riskiest Windows */}
           {topRisks.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
-              <h2 className="text-lg font-semibold mb-4">⚠️ 最高風險 5 個期間</h2>
+              <h2 className="text-lg font-semibold mb-4">⚠️ 高風險期間</h2>
               <div className="space-y-2">
                 {topRisks.map((r, i) => (
                   <div
