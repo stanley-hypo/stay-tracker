@@ -52,9 +52,14 @@ export function findRiskPeriods(trips: Trip[]): RiskPeriod[] {
       const dep = parseISO(trip.departDate);
       const ret = parseISO(trip.returnDate);
 
-      // Calculate overlap between [dep, ret] and [windowStart, windowEnd]
-      const overlapStart = dep < windowStart ? windowStart : dep;
-      const overlapEnd = ret > windowEnd ? windowEnd : ret;
+      // Abroad days = full days between depart and return (exclusive both ends)
+      // Depart day & return day count as in HK, only intermediate days count as abroad
+      const tripStart = addDays(dep, 1);  // first abroad day = day after depart
+      const tripEnd = addDays(ret, -1);   // last abroad day = day before return
+
+      // Calculate overlap between [tripStart, tripEnd] and [windowStart, windowEnd]
+      const overlapStart = tripStart < windowStart ? windowStart : tripStart;
+      const overlapEnd = tripEnd > windowEnd ? windowEnd : tripEnd;
 
       if (overlapStart <= overlapEnd) {
         daysAbroad += differenceInDays(overlapEnd, overlapStart) + 1;
@@ -160,8 +165,11 @@ export function getFutureWindows(trips: Trip[]): FutureWindow[] {
     for (const trip of trips) {
       const dep = parseISO(trip.departDate);
       const ret = parseISO(trip.returnDate);
-      const overlapStart = dep < windowStart ? windowStart : dep;
-      const overlapEnd = ret > windowEnd ? windowEnd : ret;
+      // Abroad days = full days between depart and return (exclusive both ends)
+      const tripStart = addDays(dep, 1);
+      const tripEnd = addDays(ret, -1);
+      const overlapStart = tripStart < windowStart ? windowStart : tripStart;
+      const overlapEnd = tripEnd > windowEnd ? windowEnd : tripEnd;
       if (overlapStart <= overlapEnd) {
         daysAbroad += differenceInDays(overlapEnd, overlapStart) + 1;
       }

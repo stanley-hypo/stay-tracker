@@ -470,5 +470,6 @@ function ProgressBar({ daysLocal }: { daysLocal: number }) {
 }
 
 function dayDiff(end: string, start: string): number {
-  return Math.round((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  // Count only intermediate days (exclude depart & return)
+  return Math.round((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)) - 1;
 }
