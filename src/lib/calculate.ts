@@ -127,16 +127,26 @@ export interface FutureWindow {
 }
 
 /**
- * Get future 365-day windows starting from today,
- * showing how many days abroad are still available for planning.
+ * Get active 365-day windows that overlap with today,
+ * showing how many days abroad are already committed and how many remain.
+ *
+ * Key insight: the most constrained window is NOT the one starting today.
+ * It's the window that started in the past (up to 364 days ago) that
+ * has already accumulated the most abroad days from past trips.
+ *
+ * Algorithm: check every boundary date from [today - 364, today],
+ * plus today itself. Each boundary defines a 365-day window that
+ * is currently "active" (overlaps today).
  */
 export function getFutureWindows(trips: Trip[]): FutureWindow[] {
-  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const today = new Date();
+  const todayStr = format(today, "yyyy-MM-dd");
+  const earliestStart = addDays(today, -364); // window starting 364 days ago still ends today
 
   if (trips.length === 0) {
     return [{
       windowStart: todayStr,
-      windowEnd: format(addDays(parseISO(todayStr), 364), "yyyy-MM-dd"),
+      windowEnd: format(addDays(today, 364), "yyyy-MM-dd"),
       daysAbroad: 0,
       daysLocal: 365,
       remainingAbroad: 185,
@@ -144,7 +154,8 @@ export function getFutureWindows(trips: Trip[]): FutureWindow[] {
     }];
   }
 
-  // Collect boundary dates from today onwards + today itself
+  // Collect ALL boundary dates, then filter to only those that produce
+  // windows overlapping today: start ∈ [today - 364, today]
   const boundaries = new Set<string>();
   boundaries.add(todayStr);
 
@@ -154,7 +165,11 @@ export function getFutureWindows(trips: Trip[]): FutureWindow[] {
     boundaries.add(format(addDays(parseISO(trip.returnDate), 1), "yyyy-MM-dd"));
   }
 
-  const sorted = Array.from(boundaries).filter(d => d >= todayStr).sort();
+  const earliestStr = format(earliestStart, "yyyy-MM-dd");
+  const sorted = Array.from(boundaries)
+    .filter(d => d >= earliestStr && d <= todayStr)
+    .sort();
+
   const windows: FutureWindow[] = [];
 
   for (const startStr of sorted) {
@@ -186,8 +201,8 @@ export function getFutureWindows(trips: Trip[]): FutureWindow[] {
     });
   }
 
-  // Sort chronologically
-  windows.sort((a, b) => a.windowStart.localeCompare(b.windowStart));
+  // Sort by daysAbroad descending (most constrained first)
+  windows.sort((a, b) => b.daysAbroad - a.daysAbroad || a.windowStart.localeCompare(b.windowStart));
 
   return windows;
 }
