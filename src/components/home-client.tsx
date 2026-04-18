@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition, useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { ConfirmModal, Toast } from "./ui";
 import type { RiskPeriod } from "@/lib/calculate";
 
