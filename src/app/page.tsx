@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { findRiskPeriods, getWorstPerYear, getFutureWindows } from "@/lib/calculate";
+import { findRiskPeriods, getWorstPerYear, getActiveWindows, getPlanningTimeline } from "@/lib/calculate";
 import type { Trip } from "@/lib/calculate";
 import { HomeClient } from "@/components/home-client";
 import { trips } from "@/db/schema";
@@ -28,7 +28,8 @@ export default async function Home({
   const riskPeriods = findRiskPeriods(userTrips);
   const worstPerYear = getWorstPerYear(userTrips).filter(({ worst }) => !worst.passed);
   const topRisks = riskPeriods.filter(r => !r.passed).slice(0, 5);
-  const futureWindows = getFutureWindows(userTrips);
+  const activeWindows = getActiveWindows(userTrips);
+  const planningTimeline = getPlanningTimeline(userTrips);
 
   return (
     <HomeClient
@@ -37,7 +38,8 @@ export default async function Home({
       userTrips={userTrips}
       worstPerYear={worstPerYear}
       topRisks={topRisks}
-      futureWindows={futureWindows}
+      activeWindows={activeWindows}
+      planningTimeline={planningTimeline}
     />
   );
 }
