@@ -1,4 +1,4 @@
-import { parseISO, differenceInDays, addDays, format } from "date-fns";
+import { parseISO, differenceInDays, addDays, addMonths, startOfMonth, format } from "date-fns";
 
 export interface Trip {
   id: string;
@@ -21,6 +21,19 @@ export interface RiskPeriod {
   passed: boolean;
 }
 
+/** Count abroad days from trips that fall within a given 365-day window [ws, we]. */
+function countAbroadInWindow(trips: Trip[], ws: Date, we: Date): number {
+  let daysAbroad = 0;
+  for (const trip of trips) {
+    const dep = addDays(parseISO(trip.departDate), 1);  // first abroad day
+    const ret = addDays(parseISO(trip.returnDate), -1);  // last abroad day
+    const os = dep < ws ? ws : dep;
+    const oe = ret > we ? we : ret;
+    if (os <= oe) daysAbroad += differenceInDays(oe, os) + 1;
+  }
+  return daysAbroad;
+}
+
 /**
  * Find the riskiest 365-day windows for a set of trips.
  *
@@ -31,12 +44,10 @@ export interface RiskPeriod {
 export function findRiskPeriods(trips: Trip[]): RiskPeriod[] {
   if (trips.length === 0) return [];
 
-  // Collect all boundary dates
   const boundaries = new Set<string>();
   for (const trip of trips) {
     boundaries.add(trip.departDate);
     boundaries.add(trip.returnDate);
-    // Also check day after return (when you're back)
     boundaries.add(format(addDays(parseISO(trip.returnDate), 1), "yyyy-MM-dd"));
   }
 
@@ -44,41 +55,20 @@ export function findRiskPeriods(trips: Trip[]): RiskPeriod[] {
   const results: RiskPeriod[] = [];
 
   for (const startStr of sortedBoundaries) {
-    const windowStart = parseISO(startStr);
-    const windowEnd = addDays(windowStart, 364); // 365 days inclusive
-
-    let daysAbroad = 0;
-    for (const trip of trips) {
-      const dep = parseISO(trip.departDate);
-      const ret = parseISO(trip.returnDate);
-
-      // Abroad days = full days between depart and return (exclusive both ends)
-      // Depart day & return day count as in HK, only intermediate days count as abroad
-      const tripStart = addDays(dep, 1);  // first abroad day = day after depart
-      const tripEnd = addDays(ret, -1);   // last abroad day = day before return
-
-      // Calculate overlap between [tripStart, tripEnd] and [windowStart, windowEnd]
-      const overlapStart = tripStart < windowStart ? windowStart : tripStart;
-      const overlapEnd = tripEnd > windowEnd ? windowEnd : tripEnd;
-
-      if (overlapStart <= overlapEnd) {
-        daysAbroad += differenceInDays(overlapEnd, overlapStart) + 1;
-      }
-    }
-
+    const ws = parseISO(startStr);
+    const we = addDays(ws, 364);
+    const daysAbroad = countAbroadInWindow(trips, ws, we);
     const daysLocal = 365 - daysAbroad;
     results.push({
       windowStart: startStr,
-      windowEnd: format(windowEnd, "yyyy-MM-dd"),
+      windowEnd: format(we, "yyyy-MM-dd"),
       daysAbroad,
       daysLocal,
       passed: daysLocal >= 180,
     });
   }
 
-  // Sort by daysAbroad descending (worst first), then by windowStart
   results.sort((a, b) => b.daysAbroad - a.daysAbroad || a.windowStart.localeCompare(b.windowStart));
-
   return results;
 }
 
@@ -90,19 +80,10 @@ export function getWorstPerYear(trips: Trip[]): { year: number; worst: RiskPerio
   if (allPeriods.length === 0) return [];
 
   const yearMap = new Map<number, RiskPeriod>();
-
   for (const period of allPeriods) {
-    // Use the year of the window start
-    const year = parseISO(period.windowStart).getFullYear();
-    const existing = yearMap.get(year);
-    if (!existing || period.daysAbroad > existing.daysAbroad) {
-      yearMap.set(year, period);
-    }
-    // Also tag the year of the window end
-    const endYear = parseISO(period.windowEnd).getFullYear();
-    const existingEnd = yearMap.get(endYear);
-    if (!existingEnd || period.daysAbroad > existingEnd.daysAbroad) {
-      yearMap.set(endYear, period);
+    for (const y of [parseISO(period.windowStart).getFullYear(), parseISO(period.windowEnd).getFullYear()]) {
+      const existing = yearMap.get(y);
+      if (!existing || period.daysAbroad > existing.daysAbroad) yearMap.set(y, period);
     }
   }
 
@@ -112,97 +93,127 @@ export function getWorstPerYear(trips: Trip[]): { year: number; worst: RiskPerio
 }
 
 export interface FutureWindow {
-  /** Start of the 365-day window */
   windowStart: string;
-  /** End of the 365-day window */
   windowEnd: string;
-  /** Days abroad already committed in this window */
   daysAbroad: number;
-  /** Days in local */
   daysLocal: number;
-  /** How many more days can still be spent abroad (max 185 - daysAbroad) */
   remainingAbroad: number;
-  /** Whether current status passes */
   passed: boolean;
 }
 
 /**
- * Get active 365-day windows that overlap with today,
- * showing how many days abroad are already committed and how many remain.
- *
- * Key insight: the most constrained window is NOT the one starting today.
- * It's the window that started in the past (up to 364 days ago) that
- * has already accumulated the most abroad days from past trips.
- *
- * Algorithm: check every boundary date from [today - 364, today],
- * plus today itself. Each boundary defines a 365-day window that
- * is currently "active" (overlaps today).
+ * Get ALL active windows (overlapping today) showing committed abroad days.
+ * These are the windows that constrain you RIGHT NOW.
  */
-export function getFutureWindows(trips: Trip[]): FutureWindow[] {
+export function getActiveWindows(trips: Trip[]): FutureWindow[] {
   const today = new Date();
   const todayStr = format(today, "yyyy-MM-dd");
-  const earliestStart = addDays(today, -364); // window starting 364 days ago still ends today
+  const earliestStr = format(addDays(today, -364), "yyyy-MM-dd");
 
   if (trips.length === 0) {
     return [{
       windowStart: todayStr,
       windowEnd: format(addDays(today, 364), "yyyy-MM-dd"),
-      daysAbroad: 0,
-      daysLocal: 365,
-      remainingAbroad: 185,
-      passed: true,
+      daysAbroad: 0, daysLocal: 365, remainingAbroad: 185, passed: true,
     }];
   }
 
-  // Collect ALL boundary dates, then filter to only those that produce
-  // windows overlapping today: start ∈ [today - 364, today]
   const boundaries = new Set<string>();
   boundaries.add(todayStr);
-
   for (const trip of trips) {
     boundaries.add(trip.departDate);
     boundaries.add(trip.returnDate);
     boundaries.add(format(addDays(parseISO(trip.returnDate), 1), "yyyy-MM-dd"));
   }
 
-  const earliestStr = format(earliestStart, "yyyy-MM-dd");
   const sorted = Array.from(boundaries)
     .filter(d => d >= earliestStr && d <= todayStr)
     .sort();
 
   const windows: FutureWindow[] = [];
-
   for (const startStr of sorted) {
-    const windowStart = parseISO(startStr);
-    const windowEnd = addDays(windowStart, 364);
-
-    let daysAbroad = 0;
-    for (const trip of trips) {
-      const dep = parseISO(trip.departDate);
-      const ret = parseISO(trip.returnDate);
-      // Abroad days = full days between depart and return (exclusive both ends)
-      const tripStart = addDays(dep, 1);
-      const tripEnd = addDays(ret, -1);
-      const overlapStart = tripStart < windowStart ? windowStart : tripStart;
-      const overlapEnd = tripEnd > windowEnd ? windowEnd : tripEnd;
-      if (overlapStart <= overlapEnd) {
-        daysAbroad += differenceInDays(overlapEnd, overlapStart) + 1;
-      }
-    }
-
-    const daysLocal = 365 - daysAbroad;
+    const ws = parseISO(startStr);
+    const we = addDays(ws, 364);
+    const daysAbroad = countAbroadInWindow(trips, ws, we);
     windows.push({
       windowStart: startStr,
-      windowEnd: format(windowEnd, "yyyy-MM-dd"),
+      windowEnd: format(we, "yyyy-MM-dd"),
       daysAbroad,
-      daysLocal,
+      daysLocal: 365 - daysAbroad,
       remainingAbroad: Math.max(0, 185 - daysAbroad),
-      passed: daysLocal >= 180,
+      passed: daysLocal <= 185,
     });
   }
 
-  // Sort by daysAbroad descending (most constrained first)
   windows.sort((a, b) => b.daysAbroad - a.daysAbroad || a.windowStart.localeCompare(b.windowStart));
-
   return windows;
+}
+
+export interface PlanningMonth {
+  /** Representative date (15th of month) */
+  date: string;
+  /** Human-readable month label */
+  label: string;
+  /** Maximum committed abroad days in the tightest window containing this date */
+  committedDays: number;
+  /** How many more days you can still go abroad (185 - committedDays) */
+  remainingBudget: number;
+  /** Whether it's safe (committedDays <= 185) */
+  passed: boolean;
+}
+
+/**
+ * For each future month, find the tightest 365-day window containing a trip
+ * departing that month, considering ALL existing past commitments.
+ *
+ * This answers: "if I travel this month, how many days can I safely go?"
+ *
+ * Algorithm: for each month M (today → +12 months):
+ *   1. Representative date = 15th of month
+ *   2. Any window [start, start+364] containing this date has start ∈ [date-364, date]
+ *   3. Committed abroad only changes at trip boundaries, so check all trip boundaries
+ *      in [date-364, date] plus the endpoints
+ *   4. Max committed across all such starts = worst constraint for that month
+ */
+export function getPlanningTimeline(trips: Trip[]): PlanningMonth[] {
+  const today = new Date();
+  const points: PlanningMonth[] = [];
+
+  for (let m = 0; m <= 12; m++) {
+    const monthStart = startOfMonth(addMonths(today, m));
+    const repDate = addDays(monthStart, 14); // 15th as representative
+    if (repDate < today && m > 0) continue;
+
+    const dateStr = format(repDate, "yyyy-MM-dd");
+    const earliestStr = format(addDays(repDate, -364), "yyyy-MM-dd");
+
+    // Collect all possible window starts in [date-364, date]
+    const starts = new Set<string>();
+    starts.add(earliestStr);
+    starts.add(dateStr);
+
+    for (const trip of trips) {
+      if (trip.departDate >= earliestStr && trip.departDate <= dateStr) starts.add(trip.departDate);
+      if (trip.returnDate >= earliestStr && trip.returnDate <= dateStr) starts.add(trip.returnDate);
+      const r1 = format(addDays(parseISO(trip.returnDate), 1), "yyyy-MM-dd");
+      if (r1 >= earliestStr && r1 <= dateStr) starts.add(r1);
+    }
+
+    let maxCommitted = 0;
+    for (const startStr of starts) {
+      const ws = parseISO(startStr);
+      const we = addDays(ws, 364);
+      maxCommitted = Math.max(maxCommitted, countAbroadInWindow(trips, ws, we));
+    }
+
+    points.push({
+      date: dateStr,
+      label: format(repDate, "yyyy年M月"),
+      committedDays: maxCommitted,
+      remainingBudget: Math.max(0, 185 - maxCommitted),
+      passed: maxCommitted <= 185,
+    });
+  }
+
+  return points;
 }
