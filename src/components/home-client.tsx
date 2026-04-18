@@ -410,11 +410,11 @@ export function HomeClient({
                         <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
                           <div
                             className={`h-full transition-all ${m.safe ? "bg-green-400" : "bg-red-400"}`}
-                            style={{ width: `${Math.min((m.daysAbroad / 185) * 100, 100)}%` }}
+                            style={{ width: `${Math.min((m.daysAbroad / 180) * 100, 100)}%` }}
                           />
                         </div>
                         <span className={`text-xs font-semibold w-20 text-right ${m.safe ? "text-green-600" : "text-red-600"}`}>
-                          {m.daysAbroad}/185 {m.safe ? "✅" : "❌"}
+                          {m.daysAbroad}/180 {m.safe ? "✅" : "❌"}
                         </span>
                       </div>
                     ))}
@@ -422,7 +422,7 @@ export function HomeClient({
 
                   {/* Worst window info */}
                   <p className="text-xs text-gray-400 mt-3">
-                    最緊窗口：{planningResult.worstWindow}（{planningResult.worstWindowAbroad}/185 日離港）
+                    最緊窗口：{planningResult.worstWindow}（{planningResult.worstWindowAbroad}/180 日離港）
                   </p>
                 </div>
               </div>
@@ -546,7 +546,7 @@ export function HomeClient({
                     const bgClass = m.passed
                       ? (m.remainingBudget > 100 ? "bg-blue-50" : "bg-amber-50")
                       : "bg-red-50";
-                    const barPct = Math.min((m.remainingBudget / 185) * 100, 100);
+                    const barPct = Math.min((m.remainingBudget / 180) * 100, 100);
                     const barColor = m.remainingBudget > 30
                       ? "bg-blue-400" : m.remainingBudget > 0
                       ? "bg-amber-400" : "bg-red-500";

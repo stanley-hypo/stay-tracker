@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
     const allTrips = [...userTrips.map(t => ({ departDate: t.departDate, returnDate: t.returnDate })), { departDate, returnDate: retDate }];
     const { maxAbroad } = maxAbroadInAllWindows(allTrips);
 
-    if (maxAbroad <= 185) {
+    if (maxAbroad <= 180) {
       bestSafe = retDate;
       lo = mid + 1;
     } else {
@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
     const retDate = format(addDays(dep, m.days), "yyyy-MM-dd");
     const allT = [...userTrips.map(t => ({ departDate: t.departDate, returnDate: t.returnDate })), { departDate, returnDate: retDate }];
     const { maxAbroad } = maxAbroadInAllWindows(allT);
-    return { label: m.label, returnDate: retDate, daysAbroad: maxAbroad, remaining: 185 - maxAbroad, safe: maxAbroad <= 185 };
+    return { label: m.label, returnDate: retDate, daysAbroad: maxAbroad, remaining: 180 - maxAbroad, safe: maxAbroad <= 180 };
   });
 
   return NextResponse.json({
@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
     committedDays: committedMax,
     worstWindow: `${maxWinStart} → ${format(addDays(parseISO(maxWinStart), 364), "yyyy-MM-dd")}`,
     worstWindowAbroad: finalMax,
-    headroom: 185 - finalMax,
+    headroom: 180 - finalMax,
     milestones: milestoneResults,
   });
 }

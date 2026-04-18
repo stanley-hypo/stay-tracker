@@ -64,7 +64,7 @@ export function findRiskPeriods(trips: Trip[]): RiskPeriod[] {
       windowEnd: format(we, "yyyy-MM-dd"),
       daysAbroad,
       daysLocal,
-      passed: daysLocal >= 180,
+      passed: daysAbroad <= 180,
     });
   }
 
@@ -114,7 +114,7 @@ export function getActiveWindows(trips: Trip[]): FutureWindow[] {
     return [{
       windowStart: todayStr,
       windowEnd: format(addDays(today, 364), "yyyy-MM-dd"),
-      daysAbroad: 0, daysLocal: 365, remainingAbroad: 185, passed: true,
+      daysAbroad: 0, daysLocal: 365, remainingAbroad: 180, passed: true,
     }];
   }
 
@@ -141,8 +141,8 @@ export function getActiveWindows(trips: Trip[]): FutureWindow[] {
       windowEnd: format(we, "yyyy-MM-dd"),
       daysAbroad,
       daysLocal,
-      remainingAbroad: Math.max(0, 185 - daysAbroad),
-      passed: daysLocal >= 180,
+      remainingAbroad: Math.max(0, 180 - daysAbroad),
+      passed: daysAbroad <= 180,
     });
   }
 
@@ -157,9 +157,9 @@ export interface PlanningMonth {
   label: string;
   /** Maximum committed abroad days in the tightest window containing this date */
   committedDays: number;
-  /** How many more days you can still go abroad (185 - committedDays) */
+  /** How many more days you can still go abroad (180 - committedDays) */
   remainingBudget: number;
-  /** Whether it's safe (committedDays <= 185) */
+  /** Whether it's safe (committedDays <= 180) */
   passed: boolean;
 }
 
@@ -211,8 +211,8 @@ export function getPlanningTimeline(trips: Trip[]): PlanningMonth[] {
       date: dateStr,
       label: format(repDate, "yyyy年M月"),
       committedDays: maxCommitted,
-      remainingBudget: Math.max(0, 185 - maxCommitted),
-      passed: maxCommitted <= 185,
+      remainingBudget: Math.max(0, 180 - maxCommitted),
+      passed: maxCommitted <= 180,
     });
   }
 
